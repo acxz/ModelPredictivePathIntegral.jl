@@ -1,14 +1,30 @@
-function mppisim(func_is_task_complete, func_control_update_converged,
-    func_comp_weights, func_term_cost, func_run_cost,func_gen_next_ctrl,
-    func_state_est, func_apply_ctrl, func_g, func_F, func_state_transform,
-    func_control_transform, func_filter_du, num_samples, learning_rate,
-    init_state, init_ctrl_seq, ctrl_noise_covar, time_horizon,
-    per_ctrl_based_ctrl_noise, real_traj_cost, plot_traj, print_sim, print_mppi,
-    save_sampling, sampling_filename)
+import Parameters: @with_kw, @unpack
+
+@with_kw struct MppisimParams
+    print_sim::Bool = false
+    func_is_task_complete::Function
+    func_apply_ctrl::Function
+    func_gen_next_ctrl::Function = gen_next_ctrl
+    func_control_transform::Function = control_transform
+    mppi_params::MppiParams
+end
+
+function mppisim(mppisim_params)
+
+    # Unpack mppisim_params
+    @unpack print_sim, func_is_task_complete, func_apply_ctrl, func_gen_next_ctrl,
+    func_control_transform, mppi_params = mppisim_params
+
+    # Unpack mppi_params
+    @unpack num_samples, learning_rate, dt, init_state, init_ctrl_seq,
+    ctrl_noise_covar, per_ctrl_based_ctrl_noise, real_traj_cost,
+    plot_traj, print_mppi, save_sampling,
+    sampling_filename, func_control_update_converged,
+    func_comp_weights, func_term_cost, func_run_cost,
+    func_g, func_F, func_state_transform,
+    func_filter_du = mppi_params
 
     # time stuff
-    num_timesteps = size(init_ctrl_seq, 2);
-    dt = time_horizon / num_timesteps;
     time = 0.;
     time_hist = [time];
 
@@ -36,21 +52,36 @@ function mppisim(func_is_task_complete, func_control_update_converged,
     while(func_is_task_complete(curr_x, time) == false)
 
         # Use mppi
-        sample_u_traj, rep_traj_cost = mppi(func_control_update_converged, 
-        func_comp_weights, func_term_cost, func_run_cost, func_g, func_F, 
-        func_state_transform, func_filter_du, num_samples, learning_rate, 
-        curr_x, sample_u_traj, ctrl_noise_covar, time_horizon, 
-        per_ctrl_based_ctrl_noise, real_traj_cost, print_mppi, save_sampling, 
-        sampling_filename);
+        mppi_params = MppiParams(
+            num_samples = num_samples,
+            learning_rate = learning_rate,
+            dt = dt,
+            init_state = curr_x,
+            init_ctrl_seq = sample_u_traj,
+            ctrl_noise_covar = ctrl_noise_covar,
+            per_ctrl_based_ctrl_noise = per_ctrl_based_ctrl_noise,
+            real_traj_cost = real_traj_cost,
+            plot_traj = plot_traj,
+            print_mppi = print_mppi,
+            save_sampling = save_sampling,
+            sampling_filename = sampling_filename,
+            func_control_update_converged = func_control_update_converged,
+            func_comp_weights = func_comp_weights,
+            func_term_cost = func_term_cost,
+            func_run_cost = func_run_cost,
+            func_g = func_g,
+            func_F = func_F,
+            func_state_transform = func_state_transform,
+            func_filter_du = func_filter_du,
+        )
+
+        sample_u_traj, rep_traj_cost = mppi(mppi_params);
 
         # Transform from sample_u to u
         u = func_control_transform(sample_x_hist[:,total_timestep_num], sample_u_traj[:,1], dt);
 
         # Apply control and log data
-        true_x = func_apply_ctrl(x_hist[:,total_timestep_num], u, dt);
-
-        # state estimation after applying control
-        curr_x = func_state_est(true_x);
+        curr_x = func_apply_ctrl(x_hist[:,total_timestep_num], u, dt);
 
         # Transform from state used in dynamics vs state used in control sampling
         sample_x = func_state_transform(curr_x);
@@ -81,7 +112,15 @@ function mppisim(func_is_task_complete, func_control_update_converged,
         total_timestep_num = total_timestep_num + 1;
 
         end
-      
+
     return x_hist, u_hist, sample_x_hist, sample_u_hist, rep_traj_cost_hist, time_hist
-  
+
+end
+
+function gen_next_ctrl(u)
+    return u
+end
+
+function control_transform(sample_x, sample_u, dt)
+    return sample_u
 end
