@@ -1,3 +1,5 @@
+# TODO let algo handle the vectorization instead of user defining it
+
 import LinearAlgebra: I
 import ModelPredictivePathIntegral: mppisim, MppisimParams, MppiParams
 import Plots: plotlyjs, plot
@@ -43,14 +45,13 @@ function F(x, u, dt)
     g = 9.8;
     b = 0;
 
-    θ = x[1]
-    θ′= x[2]
-    τ = u[1]
+    θ = x[1,:]
+    θ′  = x[2,:]
 
     x′ = similar(x);
 
-    x′[1] = θ′;
-    x′[2] = -g / l * sin(θ) - (b * θ′ + τ) / (m * l ^ 2);
+    x′[1,:] = θ′;
+    @. x′[2,:] = -g / l * sin(θ) - (b * θ′ + u[1,:]) / (m * l ^ 2);
 
     return x + x′ * dt
 end
@@ -71,9 +72,9 @@ function run_cost(x)
     goal_state = [pi, 0];
 
     dx = similar(x);
-    dx = x - goal_state;
+    @. dx = x - goal_state;
 
-    return 1/2 * dx' * Q * dx;
+    return 1/2 * sum(dx .* (Q * dx), dims=1);
 end
 
 function term_cost(x)
@@ -81,9 +82,9 @@ function term_cost(x)
     goal_state = [pi, 0];
 
     dx = similar(x);
-    dx = x - goal_state;
+    @. dx = x - goal_state;
 
-    return 1/2 * dx' * Qf * dx;
+    return 1/2 * sum(dx .* (Qf * dx), dims=1);
 end
 
 function main()
@@ -95,7 +96,7 @@ function main()
         dt = 0.1,
         learning_rate = 0.01,
         init_state = [0, 0],
-        init_ctrl_seq = randn.(ones(Int64, horizon) * ctrl_dim),
+        init_ctrl_seq = randn(ctrl_dim, horizon),
         ctrl_noise_covar = reshape([5e-1], (1, 1)),
         per_ctrl_based_ctrl_noise = 0.999,
         real_traj_cost = true,
@@ -121,25 +122,14 @@ function main()
     @time x_hist, u_hist, sample_x_hist, sample_u_hist, rep_traj_cost_hist,
     time_hist = mppisim(mppisim_params);
 
-    x_hist_one = broadcast(x_hist) do x
-        x[1]
-    end
-    x_hist_two = broadcast(x_hist) do x
-        x[2]
-    end
-    u_hist_one = broadcast(u_hist) do u
-        u[1]
-    end
-
-    # TODO just change x_hist/u_hist indexing
     plotlyjs()
-    x_plot = plot(time_hist, [x_hist_one, x_hist_two],
+    x_plot = plot(time_hist, [x_hist[1,:], x_hist[2,:]],
          title = "State",
          xlabel = "Time (s)",
          ylabel = "Value",
          label = ["θ (rad)" "θ′ (rad/s)"]);
 
-    u_plot = plot(time_hist[1:end-1], u_hist_one,
+    u_plot = plot(time_hist[1:end-1], u_hist[1,:],
          title = "Control",
          xlabel = "Time (s)",
          ylabel = "Value",
