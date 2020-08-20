@@ -1,8 +1,8 @@
+# TODO Should I broadcast functions or vectorize inside of them
 # TODO: loose end with plotting during running and saving samples
 
 import Parameters: @with_kw, @unpack
 import Statistics: mean
-import CUDA
 
 @with_kw struct MppiParams
     num_samples::Int64
@@ -46,31 +46,28 @@ function mppi(mppi_params)
     sample_state_dim = size(sample_init_state,1);
 
     # state trajectories
-    real_x_traj = CUDA.zeros(sample_state_dim, horizon + 1);
+    real_x_traj = zeros(sample_state_dim, horizon + 1);
     real_x_traj[:,1] = sample_init_state;
-    x_traj = CUDA.zeros(sample_state_dim, num_samples, horizon + 1);
+    x_traj = zeros(sample_state_dim, num_samples, horizon + 1);
     x_traj[:,:,1] = repeat(sample_init_state,outer=[1, num_samples]);
 
     # control stuff
     control_dim = size(init_ctrl_seq, 1);
-    ctrl_noise_covar = CUDA.CuArray(ctrl_noise_covar)
-    du = typemax(Float64) * CUDA.ones(control_dim, horizon);
-    traj_cost = CUDA.zeros(num_samples);
-    w = CUDA.zeros(num_samples);
+    du = typemax(Float64) * ones(control_dim, horizon);
 
     # control sequence
-    sample_u_traj = CUDA.CuArray(init_ctrl_seq);
+    sample_u_traj = init_ctrl_seq;
     last_sample_u_traj = sample_u_traj;
 
     # sampled control trajectories
-    v_traj = CUDA.zeros(control_dim, num_samples, horizon);
+    v_traj = zeros(control_dim, num_samples, horizon);
 
     # Begin mppi
     iteration = 1;
     while(func_control_update_converged(du, iteration) == false)
 
         # Noise generation
-        flat_distribution = CUDA.randn(control_dim, num_samples * horizon);
+        flat_distribution = randn(control_dim, num_samples * horizon);
         ctrl_noise_flat = ctrl_noise_covar * flat_distribution;
         ctrl_noise = reshape(ctrl_noise_flat, (control_dim, num_samples, horizon));
 
@@ -85,7 +82,7 @@ function mppi(mppi_params)
             v_traj[:,ctrl_based_ctrl_noise_samples+1:end,:] = ctrl_noise[:,ctrl_based_ctrl_noise_samples+1:end,:];
         end
 
-        traj_cost = CUDA.zeros(1, num_samples);
+        traj_cost = zeros(1, num_samples);
 
         for timestep_num = 1:horizon
 
@@ -117,28 +114,30 @@ function mppi(mppi_params)
 
     if (real_traj_cost == true)
         # Loop through the dynamics again to recalcuate traj_cost
-        rep_traj_cost = CUDA.zeros(1);
+        rep_traj_cost = 0.;
 
         for timestep_num = 1:horizon
 
           # Forward propagation
           real_x_traj[:,timestep_num+1] = func_F(real_x_traj[:,timestep_num],func_g(sample_u_traj[:,timestep_num]),dt);
 
-          rep_traj_cost = rep_traj_cost + func_run_cost(real_x_traj[:,timestep_num]) .+ learning_rate * sample_u_traj[:,timestep_num]' * inv(ctrl_noise_covar) * (last_sample_u_traj[:,timestep_num] - sample_u_traj[:,timestep_num]);
+          # addition error here means that func_run_cost should be broadcasted
+          # for now tmp hack with the one index
+          rep_traj_cost = rep_traj_cost + func_run_cost(real_x_traj[:,timestep_num])[1] + learning_rate * sample_u_traj[:,timestep_num]' * inv(ctrl_noise_covar) * (last_sample_u_traj[:,timestep_num] - sample_u_traj[:,timestep_num]);
 
         end
 
-        rep_traj_cost = rep_traj_cost + func_term_cost(real_x_traj[:,end]);
+        rep_traj_cost = rep_traj_cost + func_term_cost(real_x_traj[:,end])[1];
     else
         # normalize weights, in case they are not normalized
         normalized_w = w / sum(w);
 
         # Compute the representative trajectory cost of what actually happens
         # another way to think about this is weighted average of sample trajectory costs
-        rep_traj_cost = CUDA.CuArray(sum(normalized_w .* traj_cost));
+        rep_traj_cost = sum(normalized_w .* traj_cost);
     end
 
-    return Array(sample_u_traj), Array(rep_traj_cost)
+    return sample_u_traj, rep_traj_cost
 
 end
 
