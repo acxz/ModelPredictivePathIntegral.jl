@@ -1,8 +1,7 @@
-# TODO let algo handle the vectorization instead of user defining it
-
 import LinearAlgebra: I
 import ModelPredictivePathIntegral: mppisim, MppisimParams, MppiParams
 import Plots: plotlyjs, plot
+import CUDA
 
 function apply_ctrl(x, u, dt)
     m = 1;
@@ -46,12 +45,13 @@ function F(x, u, dt)
     b = 0;
 
     θ = x[1,:]
-    θ′  = x[2,:]
+    θ′= x[2,:]
+    τ = u[1,:]
 
-    x′ = similar(x);
+    x′= similar(x);
 
     x′[1,:] = θ′;
-    @. x′[2,:] = -g / l * sin(θ) - (b * θ′ + u[1,:]) / (m * l ^ 2);
+    @. x′[2,:] = -g / l * sin(θ) - (b * θ′ + τ) / (m * l ^ 2);
 
     return x + x′ * dt
 end
@@ -68,8 +68,8 @@ function is_task_complete(x, t)
 end
 
 function run_cost(x)
-    Q = [[1., 0] [0, 1]];
-    goal_state = [pi, 0];
+    Q = CUDA.CuArray([[1., 0] [0, 1]]);
+    goal_state = CUDA.CuArray([pi, 0]);
 
     dx = similar(x);
     @. dx = x - goal_state;
@@ -78,8 +78,8 @@ function run_cost(x)
 end
 
 function term_cost(x)
-    Qf = [[100., 0] [0, 100]];
-    goal_state = [pi, 0];
+    Qf = CUDA.CuArray([[100., 0] [0, 100]]);
+    goal_state = CUDA.CuArray([pi, 0]);
 
     dx = similar(x);
     @. dx = x - goal_state;
@@ -119,7 +119,8 @@ function main()
         mppi_params = mppi_params
     )
 
-    @time x_hist, u_hist, sample_x_hist, sample_u_hist, rep_traj_cost_hist,
+    CUDA.allowscalar(false)
+    CUDA.@time x_hist, u_hist, sample_x_hist, sample_u_hist, rep_traj_cost_hist,
     time_hist = mppisim(mppisim_params);
 
     plotlyjs()
@@ -137,6 +138,7 @@ function main()
 
     display(x_plot)
     display(u_plot)
+
 end
 
 main()
