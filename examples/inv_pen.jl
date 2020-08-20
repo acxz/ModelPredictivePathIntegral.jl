@@ -32,7 +32,7 @@ end
 
 function control_update_converged(du, iteration)
     tol = 0.01
-    max_iteration = 5;
+    max_iteration = 1;
     if iteration > max_iteration
         return true
     end
@@ -61,7 +61,7 @@ function gen_next_ctrl(u)
 end
 
 function is_task_complete(x, t)
-    if t > 5
+    if t > 100
         return true
     end
     return false
@@ -88,20 +88,20 @@ function term_cost(x)
 end
 
 function main()
-    horizon = 10;
+    horizon = 100;
     ctrl_dim = 1;
 
     mppi_params = MppiParams(
-        num_samples = 5000,
-        dt = 0.1,
+        num_samples = 2048,
+        dt = 0.02,
         learning_rate = 0.01,
         init_state = [0, 0],
         init_ctrl_seq = randn(ctrl_dim, horizon),
         ctrl_noise_covar = reshape([5e-1], (1, 1)),
         per_ctrl_based_ctrl_noise = 0.999,
-        real_traj_cost = true,
-        plot_traj = true,
-        print_mppi = true,
+        real_traj_cost = false,
+        plot_traj = false,
+        print_mppi = false,
         save_sampling = false,
         sampling_filename = "inv_pen",
         func_control_update_converged = control_update_converged,
@@ -112,7 +112,7 @@ function main()
     )
 
     mppisim_params = MppisimParams(
-        print_sim = true,
+        print_sim = false,
         func_is_task_complete = is_task_complete,
         func_apply_ctrl = apply_ctrl,
         func_gen_next_ctrl = gen_next_ctrl,
@@ -122,6 +122,7 @@ function main()
     @time x_hist, u_hist, sample_x_hist, sample_u_hist, rep_traj_cost_hist,
     time_hist = mppisim(mppisim_params);
 
+    #=
     plotlyjs()
     x_plot = plot(time_hist, [x_hist[1,:], x_hist[2,:]],
          title = "State",
@@ -137,6 +138,7 @@ function main()
 
     display(x_plot)
     display(u_plot)
+    =#
 end
 
 main()

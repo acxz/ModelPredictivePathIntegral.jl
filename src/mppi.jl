@@ -54,6 +54,8 @@ function mppi(mppi_params)
     # control stuff
     control_dim = size(init_ctrl_seq, 1);
     du = typemax(Float64) * ones(control_dim, horizon);
+    traj_cost = zeros(num_samples);
+    w = zeros(num_samples);
 
     # control sequence
     sample_u_traj = init_ctrl_seq;
