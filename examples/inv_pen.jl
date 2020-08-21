@@ -1,3 +1,5 @@
+# TODO let algo handle the vectorization instead of user defining it
+
 import LinearAlgebra: I
 import ModelPredictivePathIntegral: mppisim, MppisimParams, MppiParams
 import Plots: plotlyjs, plot
@@ -12,7 +14,7 @@ function apply_ctrl(x, u, dt)
     θ′= x[2]
     τ = u[1]
 
-    x′= similar(x);
+    x′ = similar(x);
 
     x′[1] = θ′;
     x′[2] = -g / l * sin(θ) - (b * θ′ + τ) / (m * l ^ 2);
@@ -43,14 +45,13 @@ function F(x, u, dt)
     g = 9.8;
     b = 0;
 
-    θ = x[1]
-    θ′= x[2]
-    τ = u[1]
+    θ = x[1,:]
+    θ′  = x[2,:]
 
-    x′= similar(x);
+    x′ = similar(x);
 
-    x′[1] = θ′;
-    x′[2] = -g / l * sin(θ) - (b * θ′ + τ) / (m * l ^ 2);
+    x′[1,:] = θ′;
+    @. x′[2,:] = -g / l * sin(θ) - (b * θ′ + u[1,:]) / (m * l ^ 2);
 
     return x + x′ * dt
 end
@@ -70,18 +71,20 @@ function run_cost(x)
     Q = [[1., 0] [0, 1]];
     goal_state = [pi, 0];
 
-    dx = x - goal_state;
+    dx = similar(x);
+    @. dx = x - goal_state;
 
-    return 1/2 * dx'* Q * dx;
+    return 1/2 * sum(dx .* (Q * dx), dims=1);
 end
 
 function term_cost(x)
     Qf = [[100., 0] [0, 100]];
     goal_state = [pi, 0];
 
-    dx = x - goal_state;
+    dx = similar(x);
+    @. dx = x - goal_state;
 
-    return 1/2 * dx' * Qf * dx;
+    return 1/2 * sum(dx .* (Qf * dx), dims=1);
 end
 
 function main()
