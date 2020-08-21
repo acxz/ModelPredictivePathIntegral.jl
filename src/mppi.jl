@@ -1,6 +1,3 @@
-# TODO Should I broadcast functions or vectorize inside of them
-# TODO: loose end with plotting during running and saving samples
-
 import Parameters: @with_kw, @unpack
 import Statistics: mean
 
@@ -54,6 +51,8 @@ function mppi(mppi_params)
     # control stuff
     control_dim = size(init_ctrl_seq, 1);
     du = typemax(Float64) * ones(control_dim, horizon);
+    traj_cost = zeros(1, num_samples);
+    w = zeros(1, num_samples);
 
     # control sequence
     sample_u_traj = init_ctrl_seq;
@@ -87,16 +86,16 @@ function mppi(mppi_params)
         for timestep_num = 1:horizon
 
             # Forward propagation
-            x_traj[:,:,timestep_num+1] = func_F(x_traj[:,:,timestep_num],func_g(v_traj[:,:,timestep_num]),dt);
+            x_traj[:,:,timestep_num+1] = reduce(hcat, broadcast(func_F, eachcol(x_traj[:,:,timestep_num]), eachcol(reduce(hcat, broadcast(func_g, eachcol(v_traj[:,:,timestep_num])))), dt));
 
-            traj_cost = traj_cost + func_run_cost(x_traj[:,:,timestep_num]) + learning_rate * sample_u_traj[:,timestep_num]' * inv(ctrl_noise_covar) * (sample_u_traj[:,timestep_num] .- v_traj[:,:,timestep_num]);
+            traj_cost = traj_cost + reduce(hcat, broadcast(func_run_cost, eachcol(x_traj[:,:,timestep_num]))) + learning_rate * sample_u_traj[:,timestep_num]' * inv(ctrl_noise_covar) * (sample_u_traj[:,timestep_num] .- v_traj[:,:,timestep_num]);
 
             if(print_mppi)
                 println("TN: $timestep_num, IN: $iteration, DU: $(mean(sum(abs.(du),dims=1)))" );
             end
         end
 
-        traj_cost = traj_cost + func_term_cost(x_traj[:,:,end]);
+        traj_cost = traj_cost + reduce(hcat, broadcast(func_term_cost, eachcol(x_traj[:,:,end])));
 
         # Weight and du calculation
         w = func_comp_weights(traj_cost);
