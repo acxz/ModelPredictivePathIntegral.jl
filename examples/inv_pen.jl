@@ -2,7 +2,7 @@
 
 import LinearAlgebra: I
 import ModelPredictivePathIntegral: mppisim, MppisimParams, MppiParams
-import Plots: plotlyjs, plot
+import Plots: plot, plotly
 
 function apply_ctrl(x, u, dt)
     m = 1;
@@ -122,7 +122,8 @@ function main()
     @time x_hist, u_hist, sample_x_hist, sample_u_hist, rep_traj_cost_hist,
     time_hist = mppisim(mppisim_params);
 
-    plotlyjs()
+    plotly()
+
     x_plot = plot(time_hist, [x_hist[1,:], x_hist[2,:]],
          title = "State",
          xlabel = "Time (s)",
